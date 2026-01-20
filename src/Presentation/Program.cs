@@ -21,9 +21,10 @@ var processedFiles = reportGenerator.GetProcessFileNames(masterFilePath);
 Console.WriteLine($"Encontrados {processedFiles.Count} archivos previos.");
 
 var strategies = new List<IExtractionStrategy>
-        {
-            new LucasPurchaseOrderStrategy()
-        };
+{
+    new LucasPurchaseOrderStrategy(),
+    new CsmPurchaseOrderStrategy(),
+};
 
 var newItemsToSave = new List<PurchaseOrderItem>();
 
