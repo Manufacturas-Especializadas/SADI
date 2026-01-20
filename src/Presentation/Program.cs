@@ -24,6 +24,7 @@ var strategies = new List<IExtractionStrategy>
 {
     new LucasPurchaseOrderStrategy(),
     new CsmPurchaseOrderStrategy(),
+    new ElkhartPurchaseOrderStrategy()
 };
 
 var newItemsToSave = new List<PurchaseOrderItem>();
