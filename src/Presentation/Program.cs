@@ -33,11 +33,11 @@ while (continuarPrograma)
     Console.WriteLine("5. Salir");
     Console.Write("\nIngrese su opción (1-5): ");
 
-    string? opcion = Console.ReadLine();
+    string? option = Console.ReadLine();
 
     var strategies = new List<IExtractionStrategy>();
 
-    switch (opcion)
+    switch (option)
     {
         case "1":
             Console.WriteLine("\n-> Seleccionado: Lucas");
