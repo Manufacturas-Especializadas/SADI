@@ -8,41 +8,60 @@ namespace Infrastructure.Reporting
     {
         public void AppendToMasterLog(List<PurchaseOrderItem> data, string masterFilePath)
         {
-            using (var workbook = new XLWorkbook(masterFilePath))
-            {
+           using (var workbook = new XLWorkbook(masterFilePath))
+           {
                 var worksheet = workbook.Worksheet(1);
-              
+
                 int row = 2;
-               
                 while (!string.IsNullOrWhiteSpace(worksheet.Cell(row, "B").GetString()))
                 {
                     row++;
-                    if (row > 10000) break;
+                    if (row > 100000) break;
                 }
 
-                Console.WriteLine($"   [Excel] Escribiendo {data.Count} registros a partir de la fila: {row}");
+                Console.WriteLine($"[Excel] Escribiendo {data.Count} registros a partir de la fila: {row}");
 
-                foreach (var item in data)
+                foreach(var item in data)
                 {
                     worksheet.Cell(row, "B").Value = item.VendorName;
+
                     worksheet.Cell(row, "C").Value = item.PartNumber;
-                    worksheet.Cell(row, "D").Value = item.Quantity;
-                    worksheet.Cell(row, "G").Value = item.InvoiceNumber;
-                    worksheet.Cell(row, "J").Value = item.PoNumber;
-                    worksheet.Cell(row, "R").Value = item.SourceFileName;
-                   
-                    if (row > 2)
+
+                    if(item.QtyPoPz > 0) worksheet.Cell(row, "D").Value = item.QtyPoPz;
+                    if(item.QtyInvPz > 0) worksheet.Cell(row, "E").Value = item.QtyInvPz;
+
+                    if(item.QtyPoKg > 0) worksheet.Cell(row, "F").Value = item.QtyPoKg;
+                    if(item.QtyInvKg > 0) worksheet.Cell(row, "G").Value = item.QtyInvKg;
+
+                    worksheet.Cell(row, "J").Value = item.InvoiceNumber;
+
+                    worksheet.Cell(row, "M").Value = item.PoNumber;
+
+                    if(item.UnitPrice > 0)
                     {
-                        var rowRange = worksheet.Range(row, 1, row, 17);
+                        worksheet.Cell(row, "L").Value = item.UnitPrice;
+                        worksheet.Cell(row, "L").Style.NumberFormat.Format = "#,##0.00";
+                    }
+
+                    if (item.TotalPrice > 0)
+                    {
+                        worksheet.Cell(row, "N").Value = item.TotalPrice;
+                        worksheet.Cell(row, "N").Style.NumberFormat.Format = "#,##0.00";
+                    }
+
+                    worksheet.Cell(row, "U").Value = item.SourceFileName;
+
+                    if(row > 2)
+                    {
+                        var rowRange = worksheet.Range(row, 1, row, 21);
                         rowRange.Style = worksheet.Row(row - 1).Style;
-                    }                    
+                    }
 
                     row++;
                 }
 
-                Console.WriteLine("   [Excel] Guardando archivo (esto puede tardar unos segundos)...");
                 workbook.Save();
-            }
+           }
         }
 
         public HashSet<string> GetProcessFileNames(string masterFilePath)
