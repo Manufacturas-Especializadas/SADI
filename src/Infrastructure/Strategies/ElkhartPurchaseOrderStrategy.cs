@@ -3,204 +3,168 @@ using Core.Interfaces;
 using UglyToad.PdfPig;
 using UglyToad.PdfPig.Content;
 using System.Text.RegularExpressions;
+using System.Globalization;
 
 namespace Infrastructure.Strategies
 {
     public class ElkhartPurchaseOrderStrategy : IExtractionStrategy
     {
         public string ClientFolderIdentifier => "02 - Elkhart";
-        public string DocumentTypeSubFolder => "01 - Orden de compra";
 
-        public List<PurchaseOrderItem> Extract(string filePath)
+        public string DocumentTypeSubFolder => "02 - Factura";
+
+        private class PoLineData
+        {
+            public int LineNumber { get; set; }
+
+            public string Part {  get; set; }
+
+            public decimal Qty { get; set; }
+
+            public string Unit { get; set; }
+
+            public decimal UnitPrice { get; set; }
+
+            public decimal Amount { get; set; }
+        }
+
+        public List<PurchaseOrderItem> Extract(string invoiceFilePath)
         {
             var items = new List<PurchaseOrderItem>();
-            string fileName = Path.GetFileName(filePath);
+            string fileName = Path.GetFileName(invoiceFilePath);
 
-            using (var pdf = PdfDocument.Open(filePath))
+            int poNumber = 0;
+            string invoiceNum = "UNKNOWN";
+            string vendorName = "ETI, LLC";
+
+            using (var pdfInv = PdfDocument.Open(invoiceFilePath))
             {
-                var page1 = pdf.GetPage(1);
-                string poNumber = GetPoNumberRegex(page1);
-                string vendorName = GetVendorName(page1);
+                var page1 = pdfInv.GetPage(1);
 
-                if (poNumber == "UNKNOWN") Console.WriteLine($"[ADVERTENCIA] PO no encontrada en {fileName}");
+                invoiceNum = ExtractInvoiceNumber(page1);
+                poNumber = ExtractPoNumberFromInvoice(page1);
 
-                string invoiceNum = GetInvoiceNumberFromFolder(filePath, poNumber);
-
-                foreach (var page in pdf.GetPages())
+                foreach (var page in pdfInv.GetPages())
                 {
-                    var pageItems = ProcessTableOnPage(page, poNumber, vendorName, "N/A", invoiceNum, fileName);
-                    items.AddRange(pageItems);
+                    var invoiceLines = ExtractInvoiceLines(page);
+
+                    foreach (var line in invoiceLines)
+                    {
+                        var newItem = new PurchaseOrderItem
+                        {
+                            PoNumber = poNumber,
+                            VendorName = vendorName,
+                            InvoiceNumber = invoiceNum,
+                            PartNumber = line.Part,
+                            SourceFileName = fileName,
+                            QtyInvPz = line.Qty,
+                            QtyPoPz = line.Qty,
+                            UnitPrice = line.UnitPrice,
+                            TotalPrice = line.Amount
+                        };
+
+                        items.Add(newItem);
+                    }
                 }
             }
 
             return items;
         }
 
-        private List<PurchaseOrderItem> ProcessTableOnPage(Page page, string po, string vendor, string incoterm, string invoiceNum, string file)
+        private List<PoLineData> ExtractInvoiceLines(Page page)
         {
-            var items = new List<PurchaseOrderItem>();
+            var list = new List<PoLineData>();
             var words = page.GetWords().ToList();
 
-            var partHeader = words.FirstOrDefault(w => w.Text.Contains("Parte", StringComparison.OrdinalIgnoreCase) ||
-                                                       w.Text.Contains("Descrip", StringComparison.OrdinalIgnoreCase));
+            var custPartHeader = words.FirstOrDefault(w => w.Text.Contains("CUSTOMER") &&
+                                                           words.Any(n => n.Text.Contains("NUMBER") && Math.Abs(n.BoundingBox.Bottom - w.BoundingBox.Bottom) < 10));
 
-            var qtyHeader = words.FirstOrDefault(w => w.Text.StartsWith("Cant", StringComparison.OrdinalIgnoreCase) ||
-                                                      w.Text.StartsWith("Qty", StringComparison.OrdinalIgnoreCase));
+            var qtyHeader = words.FirstOrDefault(w => w.Text.Contains("QUANTITY") || w.Text.Contains("SHIPPED"));
+            var unitPriceHeader = words.FirstOrDefault(w => w.Text.Contains("UNIT") && words.Any(p => p.Text.Contains("PRICE")));
+            var extPriceHeader = words.FirstOrDefault(w => w.Text.Contains("EXTENDED"));
 
-            if (partHeader == null) return items;
+            if (custPartHeader == null || unitPriceHeader == null) return list;
 
-            double tableTopY = partHeader.BoundingBox.Bottom;
+            double tableTopY = custPartHeader.BoundingBox.Bottom;
 
             var partCandidates = words.Where(w =>
                 w.BoundingBox.Top < tableTopY &&
                 w.Text.Length > 3 &&
-
-                !w.Text.Contains("POForm", StringComparison.OrdinalIgnoreCase) &&
-                !w.Text.Contains("Page", StringComparison.OrdinalIgnoreCase) &&
-                !w.Text.Contains("Página", StringComparison.OrdinalIgnoreCase) &&
-
-                Regex.IsMatch(w.Text, @"[A-Z]") &&
-                Regex.IsMatch(w.Text, @"\d") && 
-
-                w.BoundingBox.Left >= partHeader.BoundingBox.Left - 80 &&
-                w.BoundingBox.Right <= partHeader.BoundingBox.Right + 150
+                Regex.IsMatch(w.Text, @"^[A-Za-z]") &&
+                Regex.IsMatch(w.Text, @"\d") &&
+                w.BoundingBox.Left >= custPartHeader.BoundingBox.Left - 50 &&
+                w.BoundingBox.Right <= custPartHeader.BoundingBox.Right + 50
             ).ToList();
 
             foreach (var partWord in partCandidates)
             {
+                var line = new PoLineData { Part = partWord.Text };
                 double rowY = partWord.BoundingBox.Centroid.Y;
-                double rowTolerance = 15;
+                var rowWords = words.Where(w => Math.Abs(w.BoundingBox.Centroid.Y - rowY) < 10).ToList();
 
-                var rowWords = words.Where(w => Math.Abs(w.BoundingBox.Centroid.Y - rowY) < rowTolerance).ToList();
-
-                var item = new PurchaseOrderItem
+                if (qtyHeader != null)
                 {
-                    PoNumber = po,
-                    VendorName = vendor,
-                    Incoterm = incoterm,
-                    InvoiceNumber = invoiceNum,
-                    PartNumber = partWord.Text,
-                    SourceFileName = file
-                };
+                    var qtyWord = rowWords.FirstOrDefault(w =>
+                        w.BoundingBox.Left >= qtyHeader.BoundingBox.Left - 40 &&
+                        w.BoundingBox.Right <= qtyHeader.BoundingBox.Right + 40 &&
+                        Regex.IsMatch(w.Text, @"\d"));
 
-                var lineWord = rowWords.FirstOrDefault(w => w.BoundingBox.Right < partWord.BoundingBox.Left && Regex.IsMatch(w.Text, @"^\d+$"));
-                if (lineWord != null && int.TryParse(lineWord.Text, out int ln))
-                {
-                    item.LineNumber = ln;
-                }
-                else
-                {
-                    item.LineNumber = 0;
-                }
-
-                double searchQtyX = (qtyHeader != null) ? qtyHeader.BoundingBox.Left - 20 : partWord.BoundingBox.Right + 20;
-                var qtyWord = rowWords.FirstOrDefault(w => w.BoundingBox.Left >= searchQtyX && Regex.IsMatch(w.Text, @"\d"));
-
-                if (qtyWord != null)
-                {
-                    var match = Regex.Match(qtyWord.Text, @"([\d,.]+)");
-                    if (match.Success)
+                    if (qtyWord != null)
                     {
-                        string cleanNum = match.Groups[1].Value.Replace(",", "");
-                        if (decimal.TryParse(cleanNum, out decimal q)) item.Quantity = q;
+                        if (decimal.TryParse(qtyWord.Text.Replace(",", ""), NumberStyles.Any, CultureInfo.InvariantCulture, out decimal q)) line.Qty = q;
                     }
                 }
 
-                items.Add(item);
-            }
+                var priceWord = rowWords.FirstOrDefault(w =>
+                    w.BoundingBox.Left >= unitPriceHeader.BoundingBox.Left - 30 &&
+                    w.BoundingBox.Right <= unitPriceHeader.BoundingBox.Right + 30 &&
+                    Regex.IsMatch(w.Text, @"\d"));
 
-            return items;
-        }
-
-        private string GetInvoiceNumberFromFolder(string poFilePath, string targetPoNumber)
-        {
-            if (targetPoNumber == "UNKNOWN") return "PO MISSING";
-
-            try
-            {
-                var poDirInfo = new DirectoryInfo(Path.GetDirectoryName(poFilePath)!);
-                var clientRoot = poDirInfo.Parent;
-                if (clientRoot == null) return "PATH ERROR";
-
-                string invoiceFolder = Path.Combine(clientRoot.FullName, "02 - Factura");
-
-                if (!Directory.Exists(invoiceFolder)) return "NO INVOICE FOLDER";
-
-                var invoiceFiles = Directory.GetFiles(invoiceFolder, "*.pdf");
-
-                foreach (var invoicePath in invoiceFiles)
+                if (priceWord != null)
                 {
-                    using (var pdf = PdfDocument.Open(invoicePath))
-                    {
-                        var page = pdf.GetPage(1);
-                        var text = page.Text;
+                    if (decimal.TryParse(priceWord.Text.Replace("$", ""), NumberStyles.Any, CultureInfo.InvariantCulture, out decimal p)) line.UnitPrice = p;
+                }
 
-                        if (text.Contains(targetPoNumber))
-                        {
-                            return ExtractInvoiceNumberElkhart(page);
-                        }
+                if (extPriceHeader != null)
+                {
+                    var amtWord = rowWords.FirstOrDefault(w =>
+                        w.BoundingBox.Left >= extPriceHeader.BoundingBox.Left - 30 &&
+                        Regex.IsMatch(w.Text, @"\d"));
+
+                    if (amtWord != null)
+                    {
+                        if (decimal.TryParse(amtWord.Text.Replace("$", "").Replace(",", ""), NumberStyles.Any, CultureInfo.InvariantCulture, out decimal a)) line.Amount = a;
                     }
                 }
-            }
-            catch (Exception ex) { Console.WriteLine($"Error Invoice: {ex.Message}"); }
 
-            return "NOT FOUND";
+                list.Add(line);
+            }
+
+            return list;
         }
 
-        private string ExtractInvoiceNumberElkhart(Page page)
+        private string ExtractInvoiceNumber(Page page)
         {
-            var words = page.GetWords().ToList();
+            var header = page.GetWords().FirstOrDefault(w => w.Text.Contains("INVOICE") &&
+                         page.GetWords().Any(x => x.Text.Contains("NO") && Math.Abs(x.BoundingBox.Bottom - w.BoundingBox.Bottom) < 10));
 
-            var anchor = words.FirstOrDefault(w => w.Text.ToUpper().Contains("INVOICE") &&
-                                                words.Any(next => (next.Text.ToUpper().Contains("NO.") || next.Text.ToUpper() == "NO") &&
-                                                next.BoundingBox.Left > w.BoundingBox.Left &&
-                                                Math.Abs(next.BoundingBox.Bottom - w.BoundingBox.Bottom) < 5));
-
-            if (anchor != null)
+            if (header != null)
             {
-                double searchTop = anchor.BoundingBox.Bottom - 2;
-                double searchBottom = searchTop - 25;
+                var number = page.GetWords().FirstOrDefault(w =>
+                    w.BoundingBox.Top < header.BoundingBox.Bottom &&
+                    Math.Abs(w.BoundingBox.Left - header.BoundingBox.Left) < 50 &&
+                    (Regex.IsMatch(w.Text, @"\d") || w.Text.EndsWith("RI")));
 
-                double searchLeft = anchor.BoundingBox.Left - 5;
-                double searchRight = anchor.BoundingBox.Right + 60;
-
-                var candidateWords = words.Where(w =>
-                        w.BoundingBox.Top < searchTop &&
-                        w.BoundingBox.Bottom > searchBottom &&
-                        w.BoundingBox.Left > searchLeft &&
-                        w.BoundingBox.Right < searchRight &&                       
-                        (Regex.IsMatch(w.Text, @"\d") || w.Text.ToUpper() == "RI")
-
-                        ).OrderBy(w => w.BoundingBox.Left).ToList();
-
-                if (candidateWords.Any())
-                {
-                    return string.Join(" ", candidateWords.Select(w => w.Text));
-                }
+                if (number != null) return number.Text;
             }
-
-            var match = Regex.Match(page.Text, @"INVOICE\s*NO\.?\s*(\d+\s*[A-Z]*)", RegexOptions.IgnoreCase);
-            if (match.Success) return match.Groups[1].Value;
-
             return "UNKNOWN";
         }
 
-        private string GetPoNumberRegex(Page page)
+        private int ExtractPoNumberFromInvoice(Page page)
         {
-            var match = Regex.Match(page.Text, @"(?:Nro\.?|No\.?|Num)\.?\s*(?:de)?\s*OC[:\s]*(\d+)", RegexOptions.IgnoreCase);
-            if (match.Success) return match.Groups[1].Value;
-
-            match = Regex.Match(page.Text, @"PO\s*Number[:\s]+(\d+)", RegexOptions.IgnoreCase);
-            if (match.Success) return match.Groups[1].Value;
-
-            return "UNKNOWN";
-        }
-
-        private string GetVendorName(Page page)
-        {
-            var words = page.GetWords();
-            if (words.Any(w => w.Text.ToUpper().Contains("ETI"))) return "ETI, LLC";
-            return "ETI";
+            var match = Regex.Match(page.Text, @"P\.?O\.?\s*NO\.?[:\s]*(\d+)", RegexOptions.IgnoreCase);
+            if (match.Success && int.TryParse(match.Groups[1].Value, out int val)) return val;
+            return 0;
         }
     }
 }
