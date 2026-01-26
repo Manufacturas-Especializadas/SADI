@@ -53,6 +53,8 @@ namespace Infrastructure.Strategies
                                 poLinesReference.AddRange(ExtractPoLines(page));
                             }
                         }
+
+                        items.Add(newItem);
                     }
                 }
 
