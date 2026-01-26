@@ -29,9 +29,10 @@ while (continuarPrograma)
     Console.WriteLine("1. Lucas");
     Console.WriteLine("2. CSM");
     Console.WriteLine("3. Elkhart");
-    Console.WriteLine("4. TODOS (Procesar todos los clientes)");
-    Console.WriteLine("5. Salir");
-    Console.Write("\nIngrese su opción (1-5): ");
+    Console.WriteLine("4. Parker");
+    Console.WriteLine("5. TODOS (Procesar todos los clientes)");
+    Console.WriteLine("6. Salir");
+    Console.Write("\nIngrese su opción (1-6): ");
 
     string? option = Console.ReadLine();
 
@@ -52,12 +53,17 @@ while (continuarPrograma)
             strategies.Add(new ElkhartPurchaseOrderStrategy());
             break;
         case "4":
+            Console.WriteLine("\n-> Seleccionado: Parker");
+            strategies.Add(new ParkerPurchaseOrderStrategy());
+            break;
+        case "5":
             Console.WriteLine("\n-> Seleccionado: TODOS");
             strategies.Add(new LucasPurchaseOrderStrategy());
             strategies.Add(new CsmPurchaseOrderStrategy());
             strategies.Add(new ElkhartPurchaseOrderStrategy());
+            strategies.Add(new ParkerPurchaseOrderStrategy());
             break;
-        case "5":
+        case "6":
             Console.WriteLine("\nSaliendo del programa...");
             continuarPrograma = false;
             continue;

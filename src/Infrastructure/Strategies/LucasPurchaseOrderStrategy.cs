@@ -53,6 +53,8 @@ namespace Infrastructure.Strategies
                                 poLinesReference.AddRange(ExtractPoLines(page));
                             }
                         }
+
+                        items.Add(newItem);
                     }
                 }
 
@@ -106,22 +108,6 @@ namespace Infrastructure.Strategies
                 if (isKg) item.QtyPoKg = qty;
                 else item.QtyPoPz = qty;
             }
-        }
-
-        private string FindPoFile(string invoiceFilePath, int poNumber)
-        {
-            try
-            {
-                var currentDir = Directory.GetParent(invoiceFilePath);
-                if (currentDir?.Parent == null) return "NOT FOUND";
-                string poFolder = Path.Combine(currentDir.Parent.FullName, "01 - Orden de compra");
-                if (!Directory.Exists(poFolder)) return "NOT FOUND";
-
-                var files = Directory.GetFiles(poFolder, $"*{poNumber}*.pdf");
-                if (files.Any()) return files.First();
-            }
-            catch { }
-            return "NOT FOUND";
         }
 
         private List<PoLineData> ExtractInvoiceLines(Page page)
@@ -285,7 +271,23 @@ namespace Infrastructure.Strategies
                 }
             }
             return list;
-        }        
+        }
+
+        private string FindPoFile(string invoiceFilePath, int poNumber)
+        {
+            try
+            {
+                var currentDir = Directory.GetParent(invoiceFilePath);
+                if (currentDir?.Parent == null) return "NOT FOUND";
+                string poFolder = Path.Combine(currentDir.Parent.FullName, "01 - Orden de compra");
+                if (!Directory.Exists(poFolder)) return "NOT FOUND";
+
+                var files = Directory.GetFiles(poFolder, $"*{poNumber}*.pdf");
+                if (files.Any()) return files.First();
+            }
+            catch { }
+            return "NOT FOUND";
+        }
 
         private int ExtractCustomerPoFromInvoice(string text)
         {
