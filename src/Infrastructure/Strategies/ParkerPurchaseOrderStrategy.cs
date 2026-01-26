@@ -100,7 +100,10 @@ namespace Infrastructure.Strategies
                 Math.Abs(x.BoundingBox.Bottom - w.BoundingBox.Bottom) < 20));
 
             var qtyHeader = words.FirstOrDefault(w =>
-                Regex.IsMatch(w.Text, @"^QTY\.?$", RegexOptions.IgnoreCase));
+                        w.Text.Contains("QTY") &&
+                        words.Any(x =>
+                            x.Text.Contains("SHIPPED") &&
+                            Math.Abs(x.BoundingBox.Bottom - w.BoundingBox.Bottom) < 15));
 
             var boHeader = words.FirstOrDefault(w => w.Text.Contains("B/O"));
 
