@@ -25,5 +25,11 @@
         public decimal TotalPrice { get; set; }
 
         public decimal UnitPrice { get; set; }
+
+        public string Reference { get; set; }
+
+        public string Weight { get; set; }
+
+        public string Guia { get; set; }
     }
 }
