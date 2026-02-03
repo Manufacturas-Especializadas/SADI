@@ -23,6 +23,8 @@ namespace Infrastructure.Reporting
 
                 foreach(var item in data)
                 {
+                    worksheet.Cell(row, "A").Value = item.Reference;
+
                     worksheet.Cell(row, "B").Value = item.VendorName;
 
                     worksheet.Cell(row, "C").Value = item.PartNumber;
@@ -32,6 +34,8 @@ namespace Infrastructure.Reporting
 
                     if(item.QtyPoKg > 0) worksheet.Cell(row, "F").Value = item.QtyPoKg;
                     if(item.QtyInvKg > 0) worksheet.Cell(row, "G").Value = item.QtyInvKg;
+
+                    worksheet.Cell(row, "H").Value = item.Weight;
 
                     worksheet.Cell(row, "J").Value = item.InvoiceNumber;
 
@@ -48,6 +52,8 @@ namespace Infrastructure.Reporting
                         worksheet.Cell(row, "N").Value = item.TotalPrice;
                         worksheet.Cell(row, "N").Style.NumberFormat.Format = "#,##0.00";
                     }
+
+                    worksheet.Cell(row, "Q");
 
                     worksheet.Cell(row, "U").Value = item.SourceFileName;
 
